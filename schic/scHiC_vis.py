@@ -5,113 +5,161 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.sparse import issparse
 from typing import Dict, List, Optional, Any
-from schic_lib import scHiC  # Импортируем класс scHiC
+from schic import scHiC  
 
-def extract_group_maps(schic: scHiC, group_column: str) -> Dict[str, np.ndarray]:
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.sparse import coo_matrix
+import logging
+from matplotlib.colors import LogNorm
+
+logger = logging.getLogger(__name__)
+
+def plot_hic_maps(schic_obj, region, group_col, cmap='Reds', resolution=100000):
     """
-    Compute average Hi-C maps for groups of cells based on metadata.
-
+    Plot Hi-C contact maps with automatic color scaling based on data values.
+    
     Parameters:
-    -----------
-    schic : scHiC
-        An instance of the scHiC class containing Hi-C data.
-    group_column : str
-        Column name in metadata used for grouping.
-
-    Returns:
-    --------
-    Dict[str, np.ndarray]
-        Dictionary mapping group names to their average contact matrices.
+    - schic_obj: Single-cell Hi-C object containing data
+    - region: Genomic region in format 'chr:start-end'
+    - group_col: Metadata column to group cells by
+    - cmap: Colormap to use (default 'Reds')
+    - resolution: Resolution for tick labels in bp (default 100kb)
     """
-    if not schic.hic_data or schic.metadata.empty:
-        raise ValueError("No Hi-C data or metadata loaded.")
-    if group_column not in schic.metadata.columns:
-        raise ValueError(f"Column {group_column} not found in metadata.")
+    
+    try:
+        chrom, pos = region.split(":")
+        start, end = map(int, pos.split("-"))
+    except:
+        raise ValueError("Region format is invalid. Use 'chr:start-end'.")
 
-    group_maps = {}
-    for group, group_indices in schic.metadata.groupby(group_column).groups.items():
-        group_matrices = [schic.hic_data[i] for i in group_indices]
-        group_maps[group] = np.mean([matrix.toarray() for matrix in group_matrices], axis=0)
-    return group_maps
+    # Get the bins
+    bins = schic_obj.bins.reset_index()
+    region_bins = bins[
+        (bins["chrom"] == chrom) &
+        (bins["start"] >= start) &
+        (bins["end"] <= end)
+    ]
 
-def visualize_maps(
-    schic: scHiC,
-    group_column: Optional[str] = None,
-    average: bool = False,
-    cell_names: Optional[List[str]] = None,
-    n: int = 5
-) -> None:
-    """
-    Visualize Hi-C maps, either grouped by metadata or specific cells, using sparse matrices to save memory.
+    if region_bins.empty:
+        logger.warning(f"No bins found for region {region}")
+        return
 
-    Parameters:
-    -----------
-    schic : scHiC
-        An instance of the scHiC class containing Hi-C data.
-    group_column : str, optional
-        Column name in metadata used for grouping. If None, no grouping is applied.
-    average : bool, optional
-        Whether to visualize average maps for groups (default: False).
-    cell_names : List[str], optional
-        List of specific cell names to visualize. If provided, `group_column` and `average` are ignored.
-    n : int, optional
-        Number of random maps to visualize if no specific cells are provided (default: 5).
-    """
-    if not schic.hic_data:
-        raise ValueError("No Hi-C data loaded.")
+    logger.info(f"Region {region}: Found {len(region_bins)} bins")
+    region_bin_ids = region_bins['index'].values
 
-    if cell_names:
-        # Visualize specific cells
-        indices = [schic.cell_names.index(name) for name in cell_names if name in schic.cell_names]
-        if not indices:
-            raise ValueError("No valid cell names provided.")
-        matrices = [schic.hic_data[i] for i in indices]
-        titles = [schic.cell_names[i] for i in indices]
-    elif group_column:
-        # Group by metadata and visualize
-        if group_column not in schic.metadata.columns:
-            raise ValueError(f"Column {group_column} not found in metadata.")
+    # Get genomic positions for ticks
+    genomic_positions = region_bins['start'].values
+    tick_positions = np.arange(len(genomic_positions))
+    tick_labels = [f"{pos//1000000}M" if pos % 1000000 == 0 else "" 
+                  for pos in genomic_positions]
+
+    # Get unique groups
+    group_values = schic_obj.metadata[group_col].dropna().unique()
+    
+    # Create figure with subplots
+    n_groups = len(group_values)
+    fig, axes = plt.subplots(1, n_groups, figsize=(5*n_groups, 5))
+    if n_groups == 1:  # if only one group, axes is not an array
+        axes = [axes]
+
+    # First pass: calculate global min/max for consistent color scaling
+    global_min = float('inf')
+    global_max = -float('inf')
+    
+    for group in group_values:
+        group_cells = schic_obj.metadata[schic_obj.metadata[group_col] == group]['Cool_name']
+        avg_matrix = np.zeros((len(region_bin_ids), len(region_bin_ids)))
+        count = 0
         
-        if average:
-            # Visualize average maps for each group
-            group_maps = extract_group_maps(schic, group_column)
-            matrices = list(group_maps.values())
-            titles = list(group_maps.keys())
+        for cell_name in group_cells:
+            cell_idx = schic_obj.cell_names.index(cell_name)
+            mat = schic_obj.hic_data[cell_idx].tocoo()
+
+            mask = (np.isin(mat.row, region_bin_ids) & 
+                   np.isin(mat.col, region_bin_ids))
+            if np.sum(mask) > 0:
+                local_row = np.searchsorted(region_bin_ids, mat.row[mask])
+                local_col = np.searchsorted(region_bin_ids, mat.col[mask])
+                avg_matrix[local_row, local_col] += mat.data[mask]
+                avg_matrix[local_col, local_row] += mat.data[mask]
+                count += 1
+
+        if count > 0:
+            avg_matrix /= count
+            # Only consider non-zero values for min/max
+            nonzero_vals = avg_matrix[avg_matrix > 0]
+            if len(nonzero_vals) > 0:
+                current_min = np.percentile(nonzero_vals, 5)  # 5th percentile as min
+                current_max = np.percentile(nonzero_vals, 95)  # 95th percentile as max
+                global_min = min(global_min, current_min)
+                global_max = max(global_max, current_max)
+
+    # Adjust global min/max if needed
+    if global_min == float('inf'):
+        global_min = 1
+    if global_max == -float('inf'):
+        global_max = 10
+    elif global_max <= global_min:
+        global_max = global_min * 10
+
+    # Second pass: plot with consistent color scaling
+    for idx, group in enumerate(group_values):
+        logger.info(f"Processing group: {group}")
+        group_cells = schic_obj.metadata[schic_obj.metadata[group_col] == group]['Cool_name']
+        avg_matrix = np.zeros((len(region_bin_ids), len(region_bin_ids)))
+        count = 0
+        
+        for cell_name in group_cells:
+            cell_idx = schic_obj.cell_names.index(cell_name)
+            mat = schic_obj.hic_data[cell_idx].tocoo()
+
+            mask = (np.isin(mat.row, region_bin_ids) & 
+                   np.isin(mat.col, region_bin_ids))
+            if np.sum(mask) > 0:
+                local_row = np.searchsorted(region_bin_ids, mat.row[mask])
+                local_col = np.searchsorted(region_bin_ids, mat.col[mask])
+                avg_matrix[local_row, local_col] += mat.data[mask]
+                avg_matrix[local_col, local_row] += mat.data[mask]
+                count += 1
+
+        if count > 0:
+            avg_matrix /= count
+            
+            # Plot with automatically determined color range
+            ax = axes[idx]
+            im = ax.imshow(avg_matrix, 
+                          cmap=cmap, 
+                          norm=LogNorm(vmin=global_min, vmax=global_max),
+                          aspect='auto',
+                          origin='lower',
+                          extent=[0, len(region_bin_ids), 0, len(region_bin_ids)])
+            
+            # Set ticks and labels
+            ax.set_xticks(tick_positions)
+            ax.set_xticklabels(tick_labels, rotation=45)
+            ax.set_yticks(tick_positions)
+            ax.set_yticklabels(tick_labels)
+            
+            ax.set_title(f"{group}", pad=20)
+            ax.set_xlabel('Genomic Position')
+            ax.set_ylabel('Genomic Position')
+            
+            # Add colorbar
+            cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_label('Contact Frequency')
+            
+            # Add diagonal line
+            ax.plot([0, len(region_bin_ids)], [0, len(region_bin_ids)], 
+                   'k--', linewidth=0.5, alpha=0.5)
         else:
-            # Visualize random maps from each group
-            groups = schic.metadata.groupby(group_column).groups
-            matrices = []
-            titles = []
-            for group, indices in groups.items():
-                n_samples = min(n, len(indices))
-                random_indices = np.random.choice(indices, n_samples, replace=False)
-                matrices.extend([schic.hic_data[i] for i in random_indices])
-                titles.extend([f"{group} - {schic.cell_names[i]}" for i in random_indices])
-    else:
-        # Visualize random maps
-        n = min(n, len(schic.hic_data))
-        random_indices = np.random.choice(len(schic.hic_data), n, replace=False)
-        matrices = [schic.hic_data[i] for i in random_indices]
-        titles = [schic.cell_names[i] for i in random_indices]
+            logger.warning(f"No valid data found for group {group}")
+            axes[idx].axis('off')
 
-    # Plot the maps
-    fig, axes = plt.subplots(1, len(matrices), figsize=(5 * len(matrices), 5))
-    if len(matrices) == 1:
-        axes = [axes]  # Ensure axes is a list for single plots
-
-    for i, (matrix, title) in enumerate(zip(matrices, titles)):
-        if issparse(matrix):
-            # Convert sparse matrix to dense only for visualization
-            matrix = matrix.toarray()
-        # Ensure no negative values before applying log1p
-        if np.any(matrix < 0):
-            raise ValueError("Matrix contains negative values. Log scaling cannot be applied.")
-        axes[i].imshow(np.log1p(matrix), cmap="Reds")
-        axes[i].set_title(title)
-        axes[i].axis("off")
-
+    fig.suptitle(f"Hi-C Contact Maps\n{region} (color range: {global_min:.1f}-{global_max:.1f})", y=1.05)
     plt.tight_layout()
     plt.show()
+
 
 def plot_contact_frequency_distribution(schic: scHiC, bins: int = 50, color: str = "blue") -> None:
     """
@@ -231,53 +279,4 @@ def plot_non_zero_violin(schic: scHiC, group_column: str, palette: str = "Set3")
     plt.ylabel("Non-zero Contacts")
     plt.show()
 
-def plot_cumulative_contact_distribution(schic: scHiC, color: str = "purple") -> None:
-    """
-    Plot the cumulative distribution of contact frequencies.
 
-    Parameters:
-    -----------
-    schic : scHiC
-        An instance of the scHiC class containing Hi-C data.
-    color : str, optional
-        Color of the cumulative distribution plot (default: "purple").
-    """
-    if not schic.hic_data:
-        raise ValueError("No Hi-C data loaded.")
-
-    # Collect all non-zero contact frequencies
-    non_zero_values = np.concatenate([matrix.data for matrix in schic.hic_data])
-
-    # Plot the cumulative distribution
-    plt.figure(figsize=(10, 6))
-    sns.ecdfplot(non_zero_values, color=color)
-    plt.title("Cumulative Distribution of Contact Frequencies")
-    plt.xlabel("Contact Frequency")
-    plt.ylabel("Cumulative Probability")
-    plt.show()
-
-def plot_correlation_heatmap(schic: scHiC, cmap: str = "coolwarm") -> None:
-    """
-    Plot a heatmap of correlation between cells based on their contact maps.
-
-    Parameters:
-    -----------
-    schic : scHiC
-        An instance of the scHiC class containing Hi-C data.
-    cmap : str, optional
-        Color map for the heatmap (default: "coolwarm").
-    """
-    if not schic.hic_data:
-        raise ValueError("No Hi-C data loaded.")
-
-    # Compute pairwise correlations between cells
-    correlation_matrix = np.corrcoef([matrix.toarray().flatten() for matrix in schic.hic_data])
-
-    # Plot the heatmap
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(correlation_matrix, annot=True, cmap=cmap, xticklabels=schic.cell_names, yticklabels=schic.cell_names)
-    plt.title("Correlation Between Cells")
-    plt.xlabel("Cells")
-    plt.ylabel("Cells")
-    plt.show()
-    
