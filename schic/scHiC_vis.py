@@ -5,7 +5,7 @@ import seaborn as sns
 import logging
 from scipy.sparse import issparse, coo_matrix
 from typing import Dict, List, Optional, Any
-from schic import scHiC  
+from schic_class import scHiC  
 from matplotlib.colors import LogNorm
 
 logger = logging.getLogger(__name__)
