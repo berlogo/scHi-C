@@ -11,8 +11,8 @@
 
 - **`Example.ipynb`**  
   A self-contained notebook showing how to:
-  1. Load a `.cool`‐format Hi-C dataset  
-  2. Attach or edit cell‐level metadata  
+  1. Load a `.cool`‐format Hi-C dataset and cell‐level metadata
+  2. Explore main statistics of the dataset
   3. Compute and visualize average contact maps for cell subsets or genomic regions  
 
 ---
