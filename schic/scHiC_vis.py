@@ -1,16 +1,11 @@
-# visualization.py
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.sparse import issparse
+import logging
+from scipy.sparse import issparse, coo_matrix
 from typing import Dict, List, Optional, Any
 from schic import scHiC  
-
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.sparse import coo_matrix
-import logging
 from matplotlib.colors import LogNorm
 
 logger = logging.getLogger(__name__)
@@ -177,10 +172,8 @@ def plot_contact_frequency_distribution(schic: scHiC, bins: int = 50, color: str
     if not schic.hic_data:
         raise ValueError("No Hi-C data loaded.")
 
-    # Collect all non-zero contact frequencies
     non_zero_values = np.concatenate([matrix.data for matrix in schic.hic_data])
 
-    # Plot the distribution
     plt.figure(figsize=(10, 6))
     sns.histplot(non_zero_values, bins=bins, kde=True, color=color)
     plt.title("Distribution of Contact Frequencies")
@@ -235,8 +228,6 @@ def plot_mean_contact_boxplot(schic: scHiC, group_column: str, palette: str = "S
 
     # Calculate mean contact values for each cell
     mean_values = [matrix.data.mean() for matrix in schic.hic_data]
-
-    # Add mean values to metadata
     schic.metadata["Mean Contact Value"] = mean_values
 
     # Plot the boxplot
@@ -267,8 +258,6 @@ def plot_non_zero_violin(schic: scHiC, group_column: str, palette: str = "Set3")
 
     # Calculate the number of non-zero contacts for each cell
     non_zero_counts = [matrix.nnz for matrix in schic.hic_data]
-
-    # Add non-zero counts to metadata
     schic.metadata["Non-zero Contacts"] = non_zero_counts
 
     # Plot the violin plot
