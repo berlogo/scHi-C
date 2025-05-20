@@ -142,17 +142,11 @@ class scHiC:
         scHiC
             A new scHiC object with filtered metadata and hic_data.
         """
-        # Get corresponding indices for the selected cells in order
         selected_indices = [self.cell_names.index(name) for name in selected_names if name in self.cell_names]
-
-        # Subset HiC data and cell names in order
         filtered_hic_data = [self.hic_data[i] for i in selected_indices]
         filtered_cell_names = [self.cell_names[i] for i in selected_indices]
-
-        # Filter metadata and reindex to match selected_cell order
         filtered_metadata = self.metadata.set_index('Cool_name').loc[selected_names].reset_index()
 
-        # Create new scHiC object
         subset = scHiC()
         subset.hic_data = filtered_hic_data
         subset.metadata = filtered_metadata
@@ -180,7 +174,6 @@ class scHiC:
         stats = []
 
         for i, matrix in enumerate(self.hic_data):
-            # Extract non-zero values from the sparse matrix
             non_zero_values = matrix.data
 
             cell_stats = {
@@ -197,7 +190,6 @@ class scHiC:
             }
             stats.append(cell_stats)
 
-        # Convert to DataFrame for pretty printing
         stats_df = pd.DataFrame(stats)
         return stats_df
 
@@ -213,10 +205,8 @@ class scHiC:
         if not self.hic_data:
             raise ValueError("No Hi-C data loaded.")
 
-        # Collect statistics for all cells
         all_stats = self.describe()
 
-        # Compute aggregated statistics
         aggregated_stats = {
             "Total Cells": len(self.hic_data),
             "Average Matrix Shape": all_stats["Matrix Shape"].mode().iloc[0],  # Most common shape
@@ -293,7 +283,6 @@ class scHiC:
 
         for i, (matrix, cell_name) in enumerate(zip(self.hic_data, self.cell_names)):
             try:
-                # Convert sparse matrix to pixels table
                 coo = matrix.tocoo()
                 pixels = pd.DataFrame({
                     'bin1_id': coo.row,
