@@ -25,6 +25,7 @@
    cd scHi-C
 
 2. **Open the example notebook**
+
 Launch Jupyter and open Example.ipynb to walk through basic data loading, metadata annotation, grouping and visualization steps:
    ```bash
    jupyter lab Example.ipynb
