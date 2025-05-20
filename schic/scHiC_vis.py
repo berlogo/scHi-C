@@ -185,10 +185,8 @@ def plot_sparsity_distribution(schic: scHiC, bins: int = 20, color: str = "green
     if not schic.hic_data:
         raise ValueError("No Hi-C data loaded.")
 
-    # Calculate sparsity for each cell
     sparsity_values = [100 * (1 - (matrix.nnz / (matrix.shape[0] * matrix.shape[1]))) for matrix in schic.hic_data]
 
-    # Plot the distribution
     plt.figure(figsize=(10, 6))
     sns.histplot(sparsity_values, bins=bins, kde=True, color=color)
     plt.title("Distribution of Sparsity Across Cells")
@@ -214,11 +212,9 @@ def plot_mean_contact_boxplot(schic: scHiC, group_column: str, palette: str = "S
     if group_column not in schic.metadata.columns:
         raise ValueError(f"Column {group_column} not found in metadata.")
 
-    # Calculate mean contact values for each cell
     mean_values = [matrix.data.mean() for matrix in schic.hic_data]
     schic.metadata["Mean Contact Value"] = mean_values
 
-    # Plot the boxplot
     plt.figure(figsize=(10, 6))
     sns.boxplot(x=group_column, y="Mean Contact Value", data=schic.metadata, palette=palette)
     plt.title(f"Distribution of Mean Contact Values by {group_column}")
@@ -244,11 +240,9 @@ def plot_non_zero_violin(schic: scHiC, group_column: str, palette: str = "Set3")
     if group_column not in schic.metadata.columns:
         raise ValueError(f"Column {group_column} not found in metadata.")
 
-    # Calculate the number of non-zero contacts for each cell
     non_zero_counts = [matrix.nnz for matrix in schic.hic_data]
     schic.metadata["Non-zero Contacts"] = non_zero_counts
 
-    # Plot the violin plot
     plt.figure(figsize=(10, 6))
     sns.violinplot(x=group_column, y="Non-zero Contacts", data=schic.metadata, palette=palette)
     plt.title(f"Distribution of Non-zero Contacts by {group_column}")
