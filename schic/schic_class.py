@@ -18,7 +18,7 @@ logger = logging.getLogger("scHiC")
 
 class scHiC:
     def __init__(self):
-        self.hic_data = []  # Store COO matrices for memory efficiency
+        self.hic_data = []  
         self.metadata = pd.DataFrame()
         self.bins = None
         self.chroms = None
@@ -61,8 +61,8 @@ class scHiC:
 
                 if expected_shape is None:
                     expected_shape = clr.shape
-                    self.chroms = clr.chroms()[:]  # store chroms dataframe
-                    self.bins = clr.bins()[:][['chrom', 'start', 'end']]  # store only needed columns
+                    self.chroms = clr.chroms()[:]  
+                    self.bins = clr.bins()[:][['chrom', 'start', 'end']]  
 
                 elif clr.shape != expected_shape:
                     raise ValueError(f"Matrix shape mismatch in {cool_file.name}: {clr.shape} vs {expected_shape}")
@@ -209,7 +209,7 @@ class scHiC:
 
         aggregated_stats = {
             "Total Cells": len(self.hic_data),
-            "Average Matrix Shape": all_stats["Matrix Shape"].mode().iloc[0],  # Most common shape
+            "Average Matrix Shape": all_stats["Matrix Shape"].mode().iloc[0], 
             "Total Contacts (All Cells)": all_stats["Total Contacts"].sum(),
             "Average Non-zero Contacts": all_stats["Non-zero Contacts"].mean(),
             "Average Sparsity (%)": all_stats["Sparsity (%)"].mean(),
@@ -243,7 +243,6 @@ class scHiC:
         output_path = Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # Save HiC data as a compressed 3D matrix in HDF5 format
         hdf5_file = output_path / "hic_data.h5"
         with h5py.File(hdf5_file, 'w') as f:
             for i, matrix in enumerate(self.hic_data):
@@ -258,7 +257,6 @@ class scHiC:
             if self.chroms is not None:
                 f.create_dataset('chroms', data=self.chroms.to_records(index=False))
 
-        # Save metadata to CSV
         metadata_file = output_path / "metadata.csv"
         self.metadata.to_csv(metadata_file, index=False)
         logger.info(f"Data saved to {output_path}")
@@ -290,7 +288,6 @@ class scHiC:
                     'count': coo.data
                 })
 
-                # Create .cool file
                 cool_file = output_dir / f"{cell_name}.cool"
                 cooler.create_cooler(
                     str(cool_file),
